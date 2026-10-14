@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Metro-Gnome</title>
+  <meta name="description" content="Setlist metronome: searchable, sortable song library with click tracks.">
+  <meta name="theme-color" content="#111418">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Metro-Gnome">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1 class="brand">Metro-Gnome</h1>
+    <button class="icon-btn" id="settings-btn" aria-label="Settings">⚙︎</button>
+  </header>
+
+  <main>
+    <!-- SONGS ------------------------------------------------------------ -->
+    <section id="view-songs" class="view" hidden>
+      <div class="toolbar sticky">
+        <input type="search" id="song-search" placeholder="Search songs or artists" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <div class="row">
+          <label class="sort">
+            <span class="sr-only">Sort</span>
+            <select id="song-sort"></select>
+          </label>
+          <span class="count" id="song-count"></span>
+          <button class="btn primary" id="add-song-btn">+ Song</button>
+        </div>
+      </div>
+      <ul class="list" id="song-list"></ul>
+      <p class="empty" id="song-empty" hidden></p>
+    </section>
+
+    <!-- SETS ------------------------------------------------------------- -->
+    <section id="view-sets" class="view" hidden>
+      <div id="sets-index">
+        <div class="toolbar sticky">
+          <div class="row">
+            <h2 class="view-title">Set lists</h2>
+            <button class="btn primary" id="new-set-btn">+ Set</button>
+          </div>
+        </div>
+        <ul class="list" id="set-list"></ul>
+        <p class="empty" id="set-empty" hidden>No set lists yet. Tap <b>+ Set</b> to make one.</p>
+      </div>
+
+      <div id="set-detail" hidden>
+        <div class="toolbar sticky">
+          <div class="row">
+            <button class="btn ghost" id="set-back">‹ Sets</button>
+            <input id="set-name" class="title-input" aria-label="Set name" autocomplete="off">
+          </div>
+          <div class="row">
+            <button class="btn primary" id="set-play">▶ Play set</button>
+            <button class="btn" id="set-add-songs">+ Add songs</button>
+            <button class="btn danger ghost" id="set-delete">Delete</button>
+          </div>
+        </div>
+        <ol class="list numbered" id="set-songs"></ol>
+        <p class="empty" id="set-songs-empty" hidden>This set is empty. Tap <b>+ Add songs</b>.</p>
+      </div>
+    </section>
+
+    <!-- PLAY ------------------------------------------------------------- -->
+    <section id="view-play" class="view" hidden>
+      <div class="play-head">
+        <label class="sort grow">
+          <span class="sr-only">Active set</span>
+          <select id="play-set-select"></select>
+        </label>
+        <span class="position" id="play-position"></span>
+      </div>
+
+      <div id="play-empty" class="empty" hidden></div>
+
+      <div id="player" hidden>
+        <div class="song-card" id="song-card">
+          <div class="now-title" id="now-title"></div>
+          <div class="now-artist" id="now-artist"></div>
+          <div class="now-meta">
+            <div class="tempo">
+              <button class="nudge" id="tempo-down" aria-label="Slower">−</button>
+              <div><span id="now-bpm" class="bpm"></span><span class="unit">BPM</span></div>
+              <button class="nudge" id="tempo-up" aria-label="Faster">+</button>
+            </div>
+            <div class="sig" id="now-sig"></div>
+          </div>
+          <button class="link-btn" id="tempo-save" hidden>Save tempo to song</button>
+          <div class="beats" id="beats" aria-hidden="true"></div>
+          <div class="now-notes" id="now-notes"></div>
+        </div>
+
+        <div class="transport">
+          <button class="btn big" id="prev-btn" aria-label="Previous song">◀︎◀︎</button>
+          <button class="btn big play" id="play-btn">Start</button>
+          <button class="btn big" id="next-btn" aria-label="Next song">▶︎▶︎</button>
+        </div>
+        <div class="up-next" id="up-next"></div>
+
+        <ol class="list numbered compact" id="play-list"></ol>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="Sections">
+    <button data-view="songs">♪<span>Songs</span></button>
+    <button data-view="sets">☰<span>Sets</span></button>
+    <button data-view="play">▶︎<span>Play</span></button>
+  </nav>
+
+  <!-- Song editor -->
+  <dialog id="song-dialog">
+    <form method="dialog" id="song-form">
+      <h2 id="song-dialog-title">Song</h2>
+      <label>Title<input name="title" required autocomplete="off"></label>
+      <label>Artist <small>(optional)</small><input name="artist" autocomplete="off"></label>
+      <div class="grid3">
+        <label>BPM<input name="bpm" type="number" inputmode="numeric" min="20" max="400" required></label>
+        <label>Beats<input name="beats" type="number" inputmode="numeric" min="1" max="32" required></label>
+        <label>Unit
+          <select name="unit"><option>2</option><option selected>4</option><option>8</option><option>16</option></select>
+        </label>
+      </div>
+      <div class="row">
+        <button type="button" class="btn" id="tap-tempo">Tap tempo</button>
+        <button type="button" class="btn" id="song-preview">▶ Preview</button>
+      </div>
+      <label>Notes <small>(optional)</small><textarea name="notes" rows="2"></textarea></label>
+      <div class="row" id="song-addto-row">
+        <select id="song-addto" aria-label="Add to set"></select>
+        <button type="button" class="btn" id="song-addto-btn">Add to set</button>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="btn danger ghost" id="song-delete">Delete</button>
+        <span class="grow"></span>
+        <button type="button" class="btn" value="cancel" id="song-cancel">Cancel</button>
+        <button type="submit" class="btn primary" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Song picker for adding to a set -->
+  <dialog id="picker-dialog" class="full">
+    <div class="picker">
+      <div class="toolbar">
+        <div class="row">
+          <h2 class="grow">Add to <span id="picker-set-name"></span></h2>
+          <button class="btn primary" id="picker-done">Done</button>
+        </div>
+        <input type="search" id="picker-search" placeholder="Search songs" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <div class="row">
+          <select id="picker-sort" aria-label="Sort"></select>
+          <label class="check"><input type="checkbox" id="picker-hide-added"> Hide songs already in set</label>
+        </div>
+      </div>
+      <ul class="list" id="picker-list"></ul>
+      <p class="empty" id="picker-empty" hidden>No matching songs.</p>
+    </div>
+  </dialog>
+
+  <!-- Settings -->
+  <dialog id="settings-dialog">
+    <form method="dialog">
+      <h2>Settings</h2>
+      <label>Click volume<input type="range" id="set-volume" min="0" max="1" step="0.05"></label>
+      <label class="check"><input type="checkbox" id="set-accent"> Accent beat 1</label>
+      <label class="check"><input type="checkbox" id="set-keep"> Keep clicking when changing songs</label>
+      <label class="check"><input type="checkbox" id="set-wake"> Keep screen awake on Play tab</label>
+
+      <h3>Library</h3>
+      <div class="row wrap">
+        <button type="button" class="btn" id="bulk-btn">Bulk add songs</button>
+        <button type="button" class="btn" id="export-btn">Export backup</button>
+        <button type="button" class="btn" id="import-btn">Import backup</button>
+        <input type="file" id="import-file" accept="application/json,.json" hidden>
+      </div>
+      <p class="hint" id="storage-status"></p>
+      <p class="hint">Keys / page-turner pedals: ←/→ or PgUp/PgDn change songs, Space starts/stops.</p>
+      <div class="dialog-actions">
+        <span class="grow"></span>
+        <button class="btn primary" value="close">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Bulk add -->
+  <dialog id="bulk-dialog">
+    <form method="dialog" id="bulk-form">
+      <h2>Bulk add songs</h2>
+      <p class="hint">One song per line: <code>Title | BPM | 4/4 | Artist</code>. Time signature and artist are optional. Commas work too.</p>
+      <textarea id="bulk-text" rows="10" placeholder="Shout to the Lord | 76 | 4/4&#10;Great Are You Lord, 72&#10;Amazing Grace | 80 | 3/4 | John Newton"></textarea>
+      <p class="hint error" id="bulk-errors"></p>
+      <div class="dialog-actions">
+        <span class="grow"></span>
+        <button type="button" class="btn" id="bulk-cancel">Cancel</button>
+        <button type="submit" class="btn primary">Add</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" popover="manual"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
