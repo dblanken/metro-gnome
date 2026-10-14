@@ -8,6 +8,12 @@ const DEFAULT_STATE = {
   version: 1,
   songs: [],      // { id, title, artist, bpm, beats, unit, notes, createdAt, updatedAt }
   setlists: [],   // { id, name, songIds: [], createdAt, updatedAt }
+  deleted: {},    // { [id]: deletedAt } tombstones so deletions sync
+  sync: {
+    token: '',            // GitHub token with gist scope (this device only)
+    gistId: '',
+    lastSync: 0,
+  },
   ui: {
     view: 'songs',        // 'songs' | 'sets' | 'play'
     songSort: 'title-asc',
@@ -68,6 +74,8 @@ export function normalize(data) {
     version: 1,
     songs,
     setlists,
+    deleted: data.deleted && typeof data.deleted === 'object' ? { ...data.deleted } : {},
+    sync: { ...base.sync, ...(data.sync || {}) },
     ui: { ...base.ui, ...(data.ui || {}) },
     settings: { ...base.settings, ...(data.settings || {}) },
   };

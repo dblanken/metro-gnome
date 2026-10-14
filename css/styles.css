@@ -254,3 +254,5 @@ dialog.full {
   z-index: 100;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+a { color: var(--accent); }

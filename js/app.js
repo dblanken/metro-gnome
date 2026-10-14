@@ -1,5 +1,6 @@
 import { Metronome } from './metronome.js';
 import { load, save, uid, normalize, exportData, parseBulk } from './store.js';
+import { findGist, createGist, readGist, writeGist, mergeData, serialize } from './sync.js';
 
 const state = load();
 const $ = (sel) => document.querySelector(sel);
@@ -14,7 +15,14 @@ applySettings();
 
 function persist() {
   save(state);
+  // Queue a sync only when library data (not just UI position) changed.
+  const sig = serialize(state);
+  if (sig !== lastDataSig) {
+    lastDataSig = sig;
+    scheduleSync();
+  }
 }
+let lastDataSig = serialize(state);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -230,7 +238,7 @@ function commitSongForm() {
   if (!songForm.reportValidity()) return null;
   const data = readSongForm();
   const now = Date.now();
-  if (editingId) {
+  if (editingId && songById(editingId)) {
     Object.assign(songById(editingId), data, { updatedAt: now });
   } else {
     const song = { id: uid(), ...data, createdAt: now, updatedAt: now };
@@ -269,8 +277,13 @@ $('#song-delete').addEventListener('click', () => {
   if (active && used.includes(active)) {
     state.ui.currentIndex -= active.songIds.slice(0, state.ui.currentIndex).filter((id) => id === s.id).length;
   }
+  const now = Date.now();
   state.songs = state.songs.filter((x) => x.id !== s.id);
-  for (const l of used) l.songIds = l.songIds.filter((id) => id !== s.id);
+  state.deleted[s.id] = now;
+  for (const l of used) {
+    l.songIds = l.songIds.filter((id) => id !== s.id);
+    l.updatedAt = now;
+  }
   clampIndex();
   persist();
   closeSongDialog();
@@ -363,6 +376,7 @@ $('#set-delete').addEventListener('click', () => {
   const list = setById(state.ui.openSetId);
   if (!list || !confirm(`Delete set “${list.name}”? Songs stay in your library.`)) return;
   state.setlists = state.setlists.filter((l) => l.id !== list.id);
+  state.deleted[list.id] = Date.now();
   if (state.ui.activeSetId === list.id) {
     state.ui.activeSetId = null;
     state.ui.currentIndex = 0;
@@ -739,8 +753,144 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     metro.resync();
     updateWakeLock();
+    syncNow();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Cross-device sync (GitHub Gist)
+
+let syncTimer = null;
+let syncing = null;     // in-flight promise
+let syncAgain = false;  // a change happened while a sync was running
+let syncStatus = '';
+
+function syncEnabled() {
+  return !!state.sync.token;
+}
+
+function scheduleSync(delay = 1500) {
+  if (!syncEnabled()) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(syncNow, delay);
+}
+
+async function syncNow() {
+  if (!syncEnabled()) return;
+  if (syncing) {
+    syncAgain = true;
+    return syncing;
+  }
+  clearTimeout(syncTimer);
+  syncing = (async () => {
+    setSyncStatus('Syncing…');
+    try {
+      const { token } = state.sync;
+      if (!state.sync.gistId) {
+        state.sync.gistId = (await findGist(token)) || (await createGist(token, serialize(state)));
+        save(state);
+      }
+      const remote = normalize(await readGist(token, state.sync.gistId));
+      const merged = mergeData(state, remote);
+      applyMerged(merged);
+      const out = serialize(merged);
+      if (out !== serialize(remote)) await writeGist(token, state.sync.gistId, out);
+      state.sync.lastSync = Date.now();
+      save(state);
+      setSyncStatus(`Synced ${new Date(state.sync.lastSync).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+    } catch (err) {
+      if (err.status === 404 && state.sync.gistId) {
+        // Gist was deleted on GitHub: forget it and recreate on next sync.
+        state.sync.gistId = '';
+        save(state);
+      }
+      setSyncStatus(err.message || 'Sync failed');
+      console.warn('Sync failed', err);
+    } finally {
+      syncing = null;
+      if (syncAgain) {
+        syncAgain = false;
+        scheduleSync(300);
+      }
+    }
+  })();
+  return syncing;
+}
+
+// Replace local library data with the merged result without losing the
+// player's place (the current song stays current even if the set changed).
+function applyMerged(merged) {
+  const before = serialize(state);
+  const curId = currentSong()?.id;
+  state.songs = merged.songs;
+  state.setlists = merged.setlists;
+  state.deleted = merged.deleted;
+  lastDataSig = serialize(state);
+  if (lastDataSig === before) return;
+
+  if (state.ui.activeSetId && !activeSet()) {
+    if (metro.playing && previewId === null) stopClick();
+    state.ui.activeSetId = null;
+    state.ui.currentIndex = 0;
+  } else if (curId) {
+    const ids = activeSet().songIds;
+    if (ids[state.ui.currentIndex] !== curId && ids.includes(curId)) state.ui.currentIndex = ids.indexOf(curId);
+  }
+  if (state.ui.openSetId && !setById(state.ui.openSetId)) state.ui.openSetId = null;
+  clampIndex();
+  save(state);
+  // Don't yank an open editor out from under the user; refresh the view behind it.
+  render();
+}
+
+function setSyncStatus(msg) {
+  syncStatus = msg;
+  const el = $('#sync-status');
+  if (el) el.textContent = msg;
+  renderSyncSettings();
+}
+
+function renderSyncSettings() {
+  const on = syncEnabled();
+  $('#sync-off').hidden = on;
+  $('#sync-on').hidden = !on;
+  $('#sync-status').textContent = on ? syncStatus || 'Connected' : '';
+  const link = $('#sync-gist-link');
+  link.hidden = !state.sync.gistId;
+  if (state.sync.gistId) link.href = `https://gist.github.com/${state.sync.gistId}`;
+}
+
+$('#sync-connect').addEventListener('click', async () => {
+  const token = $('#sync-token').value.trim();
+  if (!token) return toast('Paste a GitHub token first');
+  state.sync.token = token;
+  state.sync.gistId = '';
+  save(state);
+  $('#sync-token').value = '';
+  renderSyncSettings();
+  await syncNow();
+  if (state.sync.gistId) toast('Sync connected');
+  else {
+    state.sync.token = '';
+    save(state);
+    renderSyncSettings();
+    alert(`Couldn't connect: ${syncStatus}`);
+  }
+});
+$('#sync-now').addEventListener('click', () => syncNow());
+$('#sync-disconnect').addEventListener('click', () => {
+  if (!confirm('Stop syncing this device? Your songs stay here and in the gist.')) return;
+  state.sync = { token: '', gistId: '', lastSync: 0 };
+  syncStatus = '';
+  save(state);
+  renderSyncSettings();
+});
+
+window.addEventListener('online', () => syncNow());
+// Pick up changes from other devices while the app sits open.
+setInterval(() => {
+  if (document.visibilityState === 'visible') syncNow();
+}, 120000);
 
 // ---------------------------------------------------------------------------
 // Settings, import/export, bulk add
@@ -751,6 +901,7 @@ $('#settings-btn').addEventListener('click', async () => {
   $('#set-accent').checked = state.settings.accent;
   $('#set-keep').checked = state.settings.keepPlaying;
   $('#set-wake').checked = state.settings.wakeLock;
+  renderSyncSettings();
   $('#storage-status').textContent = await storageStatus();
   settingsDialog.showModal();
 });
@@ -823,6 +974,15 @@ $('#import-file').addEventListener('change', async (e) => {
       mergeImport(incoming);
     } else if (confirm('Replace EVERYTHING on this device with the backup?')) {
       stopClick();
+      // Tombstone everything not in the backup and stamp the backup as newest
+      // so the replacement wins on every synced device too.
+      const now = Date.now();
+      const keep = new Set([...incoming.songs, ...incoming.setlists].map((r) => r.id));
+      for (const r of [...state.songs, ...state.setlists]) if (!keep.has(r.id)) state.deleted[r.id] = now;
+      for (const r of [...incoming.songs, ...incoming.setlists]) {
+        r.updatedAt = now;
+        delete state.deleted[r.id];
+      }
       state.songs = incoming.songs;
       state.setlists = incoming.setlists;
       state.ui.activeSetId = null;
@@ -910,3 +1070,4 @@ if ('serviceWorker' in navigator) {
 }
 
 showView(state.ui.view || 'songs');
+syncNow();

@@ -1,7 +1,7 @@
 // Offline support: serve the app shell from cache instantly, refresh the
 // cache in the background. A new version is picked up on the next launch,
 // never by reloading the page you're on.
-const CACHE = 'metro-gnome-v1';
+const CACHE = 'metro-gnome-v2';
 const SHELL = [
   './',
   'index.html',
@@ -9,6 +9,7 @@ const SHELL = [
   'js/app.js',
   'js/metronome.js',
   'js/store.js',
+  'js/sync.js',
   'manifest.webmanifest',
   'icons/icon.svg',
   'icons/icon-192.png',

@@ -175,6 +175,25 @@
       <label class="check"><input type="checkbox" id="set-keep"> Keep clicking when changing songs</label>
       <label class="check"><input type="checkbox" id="set-wake"> Keep screen awake on Play tab</label>
 
+      <h3>Sync across devices</h3>
+      <div id="sync-off">
+        <p class="hint">Keeps your songs and set lists in a private GitHub Gist. On each device:
+          <a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=Metro-Gnome" target="_blank" rel="noopener">create a token</a>
+          with only the <b>gist</b> scope (pick an expiration you're comfortable with), then paste it here.
+          Every device using the same GitHub account finds the same gist automatically.</p>
+        <div class="row">
+          <input id="sync-token" type="password" placeholder="ghp_… or github_pat_…" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button type="button" class="btn primary" id="sync-connect">Connect</button>
+        </div>
+      </div>
+      <div id="sync-on" hidden>
+        <p class="hint"><span id="sync-status"></span> · <a id="sync-gist-link" target="_blank" rel="noopener">view gist</a></p>
+        <div class="row">
+          <button type="button" class="btn" id="sync-now">Sync now</button>
+          <button type="button" class="btn danger ghost" id="sync-disconnect">Disconnect</button>
+        </div>
+      </div>
+
       <h3>Library</h3>
       <div class="row wrap">
         <button type="button" class="btn" id="bulk-btn">Bulk add songs</button>
